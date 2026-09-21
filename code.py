@@ -13,7 +13,7 @@ from flask import Flask
 from threading import Thread
 
 # --- Configuration ---
-TOKEN = '8241319689:AAGeQ_yEwv76AYvvDVvGvUZZuoJLtsSBQX0'  # আপনার বট টোকেন
+TOKEN = '8752291877:AAHaIk0uH6Q5lBMyIgDShTZGQQQtOYV71uk'  # আপনার বট টোকেন
 OWNER_ID = 6048094235  # আপনার টেলিগ্রাম ইউজার আইডি
 
 # Folder & Database Setup
