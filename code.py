@@ -12,9 +12,9 @@ from telebot import types
 from flask import Flask
 from threading import Thread
 
-# --- Configuration ---
-TOKEN = '8752291877:AAHaIk0uH6Q5lBMyIgDShTZGQQQtOYV71uk'  # আপনার বট টোকেন
-OWNER_ID = 6048094235  # আপনার টেলিগ্রাম ইউজার আইডি
+# --- Configuration (Environment Variables for GitHub/Render Safety) ---
+TOKEN = os.getenv('BOT_TOKEN')  # Render Environment Variables থেকে টোকেন নেবে
+OWNER_ID = int(os.getenv('OWNER_ID', 0))  # Render Environment Variables থেকে Owner ID নেবে
 
 # Folder & Database Setup
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -32,29 +32,29 @@ def load_users():
             with open(USERS_FILE, 'r') as f:
                 return json.load(f)
         except Exception:
-            return [OWNER_ID]
-    return [OWNER_ID]
+            return [OWNER_ID] if OWNER_ID else []
+    return [OWNER_ID] if OWNER_ID else []
 
 def save_users():
     with open(USERS_FILE, 'w') as f:
         json.dump(allowed_users, f)
 
 allowed_users = load_users()
-if OWNER_ID not in allowed_users:
+if OWNER_ID and OWNER_ID not in allowed_users:
     allowed_users.append(OWNER_ID)
     save_users()
 
 # Process tracking
 running_processes = {}  # {filename: subprocess.Popen}
 
-bot = telebot.TeleBot(TOKEN)
+bot = telebot.TeleBot(TOKEN) if TOKEN else None
 
 # --- Keep Alive Flask Server ---
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "shadow mini KAWSER's Hosting Server is Active!"
+    return "Hosting Server is Active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
@@ -100,10 +100,9 @@ def run_script_thread(file_path, filename, chat_id):
     cmd = [sys.executable, file_path]
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, cwd=BOTS_DIR)
     running_processes[filename] = proc
-    
+
     bot.send_message(chat_id, f"🚀 `{filename}` is now running!", parse_mode='Markdown')
-    
-    # Check for early runtime errors
+
     time.sleep(3)
     if proc.poll() is not None:
         _, stderr = proc.communicate()
@@ -123,7 +122,6 @@ def run_script_thread(file_path, filename, chat_id):
 def send_welcome(message):
     user_id = message.from_user.id
     if not is_authorized(user_id):
-        # অটোমেটিকভাবে ইউজারকে তার Chat ID দেখিয়ে দেওয়া হবে
         return bot.reply_to(
             message, 
             f"❌ **Unauthorized Access!**\n\n"
@@ -131,7 +129,7 @@ def send_welcome(message):
             f"🆔 **Your Chat ID:** `{user_id}`", 
             parse_mode='Markdown'
         )
-    
+
     user_type = "Owner" if is_owner(user_id) else "Authorized User"
     bot.reply_to(
         message, 
@@ -165,7 +163,7 @@ def remove_user_start(message):
     users_list = [str(u) for u in allowed_users if u != OWNER_ID]
     if not users_list:
         return bot.reply_to(message, "ℹ️ বর্তমানে কোনো সাব-ইউজার নেই।")
-    
+
     msg = bot.reply_to(message, f"👥 **ইউজার সরাতে তার Chat ID পাঠাও:**\n\nবর্তমান ইউজারসমূহ:\n`" + "\n".join(users_list) + "`", parse_mode='Markdown')
     bot.register_next_step_handler(msg, process_remove_user)
 
@@ -201,26 +199,27 @@ def list_files(message):
     files = [f for f in os.listdir(BOTS_DIR) if f.endswith('.py')]
     if not files:
         return bot.reply_to(message, "📂 No `.py` files uploaded yet.")
-    
+
     for f in files:
         status = "🟢 Running" if f in running_processes and running_processes[f].poll() is None else "🔴 Stopped"
         markup = types.InlineKeyboardMarkup()
-        
+
+        # Dynamic Colored Inline Buttons (Danger, Primary, Success)
         if status == "🟢 Running":
-            stop_btn = types.InlineKeyboardButton("🛑 Stop Script", callback_data=f"stop_{f}")
+            stop_btn = types.InlineKeyboardButton("🛑 Stop Script", callback_data=f"stop_{f}", style="danger")
             markup.add(stop_btn)
         else:
-            run_btn = types.InlineKeyboardButton("▶️ Run Script", callback_data=f"run_{f}")
-            del_btn = types.InlineKeyboardButton("🗑 Delete File", callback_data=f"del_{f}")
+            run_btn = types.InlineKeyboardButton("▶️ Run Script", callback_data=f"run_{f}", style="success")
+            del_btn = types.InlineKeyboardButton("🗑 Delete File", callback_data=f"del_{f}", style="danger")
             markup.add(run_btn, del_btn)
-            
+
         bot.send_message(message.chat.id, f"📄 **File:** `{f}`\n**Status:** {status}", parse_mode='Markdown', reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
     if not is_authorized(call.from_user.id):
         return bot.answer_callback_query(call.id, "Access Denied!", show_alert=True)
-        
+
     filename = call.data.split('_', 1)[1]
     filepath = os.path.join(BOTS_DIR, filename)
 
@@ -277,7 +276,7 @@ def handle_document(message):
 def stop_all(message):
     if not is_owner(message.from_user.id): 
         return bot.reply_to(message, "❌ Only Owner can stop all scripts!")
-    
+
     count = 0
     for name, proc in list(running_processes.items()):
         proc.terminate()
@@ -287,4 +286,5 @@ def stop_all(message):
 
 # Bot Infinity Polling Setup
 if __name__ == "__main__":
-    bot.infinity_polling()
+    if bot:
+        bot.infinity_polling()
